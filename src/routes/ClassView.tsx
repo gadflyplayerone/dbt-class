@@ -27,8 +27,12 @@ export default function ClassView() {
   const { lessonId = "" } = useParams();
   const nav = useNavigate();
 
-  const lesson = course.lessons.find((l) => l.id === lessonId);
-  if (!lesson) return <div className="card">Lesson not found.</div>;
+  // Resolve the active lesson
+  const lessonMaybe = course.lessons.find((l) => l.id === lessonId);
+  if (!lessonMaybe) return <div className="card">Lesson not found.</div>;
+
+  // ✅ Narrow to a non-nullable lesson for everything below
+  const lesson = lessonMaybe;
 
   // Build questions from the active lesson; shuffle options per render as needed.
   function prepareQuestions(): Question[] {
