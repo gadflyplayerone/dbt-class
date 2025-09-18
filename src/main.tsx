@@ -8,6 +8,10 @@ import Certificate from "./routes/Certificate";
 import LeaderboardMain from "./routes/LeaderboardMain";
 import LeaderboardSample from "./routes/LeaderboardSample";
 import SampleClass from "./routes/Sample";
+import "./styles/responsive.css";
+import "./styles/util.css";
+// Optional (if you print certificates):
+import "./styles/print-certificate.css";
 import "./styles.css";
 
 const router = createBrowserRouter([
