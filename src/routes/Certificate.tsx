@@ -1,74 +1,150 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
-import { COURSE } from "@/data/curriculum";
-import { ProgressState } from "@/types";
+import type { ProgressState } from "@/types";
 
 type Ctx = {
   progress: ProgressState;
   setProgress: React.Dispatch<React.SetStateAction<ProgressState>>;
+  course: {
+    id: string;
+    title: string;
+    lessons: Array<{
+      id: string;
+      title: string;
+      minutes?: number;
+      reading?: string;
+      quiz: Array<{ text?: string; correct?: boolean }>;
+    }>;
+  };
+  courseId: string;
 };
 
 export default function Certificate() {
-  const { progress } = useOutletContext<Ctx>();
-  const allPassed = useMemo(() => {
-    return COURSE.lessons.every(l => progress.perLesson[l.id]?.passed);
-  }, [progress]);
+  const { progress, course, courseId } = useOutletContext<Ctx>();
   const name = progress.user?.name ?? "Student";
-  const ref = useRef<HTMLDivElement>(null);
 
-  function downloadPDF() {
-    // Use jsPDF if available; otherwise use print as a fallback.
+  const allPassed = useMemo(() => {
+    if (!course?.lessons?.length) return false;
+    return course.lessons.every((l) => progress.perLesson[l.id]?.passed);
+  }, [course, progress]);
+
+  const aggregate = useMemo(() => {
+    let totalCorrect = 0;
+    let totalQuestions = 0;
+    for (const l of course.lessons) {
+      const lp = progress.perLesson[l.id];
+      if (lp?.bestScore) totalCorrect += lp.bestScore;
+      totalQuestions += l.quiz.length;
+    }
+    const percent =
+      totalQuestions > 0 ? Math.round((100 * totalCorrect) / totalQuestions) : 0;
+    return { totalCorrect, totalQuestions, percent };
+  }, [course, progress]);
+
+  async function downloadPDF() {
+    // Prefer UMD jsPDF if available; fallback to print
     // @ts-ignore
-    const jsPDF = window.jspdf?.jsPDF;
+    const jsPDF = (window as any).jspdf?.jsPDF;
     if (!jsPDF) {
       window.print();
       return;
     }
-    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-    const W = 842, H = 595;
-    doc.setFillColor(18, 26, 42);
-    doc.rect(0, 0, W, H, "F");
-    doc.setTextColor(255, 255, 255);
+
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const now = new Date();
+    const dateStr = now.toLocaleDateString();
+
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(28);
-    doc.text("Certificate of Completion", W/2, 120, { align: "center" });
+    doc.setFontSize(22);
+    doc.text(`${course.title} — Certificate of Completion`, 72, 80);
+
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(14);
-    doc.text("This certifies that", W/2, 180, { align: "center" });
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(36);
-    doc.text(name, W/2, 230, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(14);
-    doc.text("has successfully completed the DBT Foundations course.", W/2, 270, { align: "center" });
     doc.setFontSize(12);
-    const date = new Date().toLocaleDateString();
-    doc.text(`Date: ${date}`, W/2, 310, { align: "center" });
-    doc.setFontSize(10);
-    doc.text("© DBT Class", W/2, 560, { align: "center" });
-    doc.save(`DBT-Certificate-${name.replace(/\s+/g, "_")}.pdf`);
+    doc.text(`Recipient: ${name}`, 72, 120);
+    doc.text(`Date: ${dateStr}`, 72, 140);
+    doc.text(
+      `Overall Score: ${aggregate.totalCorrect} / ${aggregate.totalQuestions} (${aggregate.percent}%)`,
+      72,
+      160
+    );
+
+    doc.setFont("helvetica", "italic");
+    doc.text(
+      "Educational use only. This certificate does not replace clinical treatment.",
+      72,
+      720
+    );
+
+    doc.save(
+      `${course.title.replace(/\s+/g, "-")}-Certificate-${name.replace(/\s+/g, "_")}.pdf`
+    );
+
+    // Write to this course's leaderboard
+    try {
+      const { addToLeaderboard } = await import("@/lib/db");
+      await addToLeaderboard(
+        {
+          name,
+          dateIso: now.toISOString(),
+          totalCorrect: aggregate.totalCorrect,
+          totalQuestions: aggregate.totalQuestions,
+          percent: aggregate.percent,
+        },
+        courseId
+      );
+    } catch {
+      // no-op if DB unavailable
+    }
   }
 
   return (
     <div className="card vstack">
-      <h1 style={{margin:0}}>Certificate</h1>
+      <h1 style={{ margin: 0 }}>Certificate</h1>
+
       {!allPassed && (
         <p className="status">
-          Complete all lessons to unlock your certificate. You have {Object.values(progress.perLesson).filter(p => p.passed).length}/{COURSE.lessons.length} done.
+          Complete all lessons to unlock your certificate. You have{" "}
+          {Object.values(progress.perLesson).filter((p) => p.passed).length}/
+          {course.lessons.length} done.
         </p>
       )}
-      <div ref={ref} style={{padding:16, borderRadius:12, border:"1px dashed rgba(255,255,255,0.2)"}}>
+
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 12,
+          border: "1px dashed rgba(255,255,255,0.2)",
+          marginBottom: 12,
+        }}
+      >
         <div className="small">Recipient</div>
-        <div style={{fontSize:24, fontWeight:700}}>{name}</div>
+        <div style={{ fontSize: 24, fontWeight: 700 }}>{name}</div>
+
+        <div className="small" style={{ marginTop: 8 }}>
+          Course
+        </div>
+        <div style={{ fontSize: 16 }}>{course.title}</div>
+
+        <div className="small" style={{ marginTop: 8 }}>
+          Overall
+        </div>
+        <div style={{ fontSize: 16 }}>
+          {aggregate.totalCorrect} / {aggregate.totalQuestions} ({aggregate.percent}%)
+        </div>
       </div>
-      <div className="hstack" style={{gap:12}}>
-        <button className="button" onClick={() => window.history.back()}>Back</button>
+
+      <div className="hstack" style={{ gap: 12 }}>
+        <button className="button" onClick={() => window.history.back()}>
+          Back
+        </button>
         <button className="button primary" onClick={downloadPDF} disabled={!allPassed}>
           {allPassed ? "Download PDF" : "Locked until all lessons complete"}
         </button>
       </div>
-      <div className="small">
-        Your name and progress are stored locally on your device (localStorage). Reset from the header at any time.
+
+      <div className="small" style={{ opacity: 0.9, marginTop: 12 }}>
+        Your name and progress are stored locally on your device (per course). Reset from the
+        header at any time.
       </div>
     </div>
   );
