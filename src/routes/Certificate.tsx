@@ -31,14 +31,22 @@ export default function Certificate() {
   const aggregate = useMemo(() => {
     let totalCorrect = 0;
     let totalQuestions = 0;
+    let lessonsPassed = 0;
     for (const l of course.lessons) {
       const lp = progress.perLesson[l.id];
+      if (lp?.passed) lessonsPassed += 1;
       if (lp?.bestScore) totalCorrect += lp.bestScore;
       totalQuestions += l.quiz.length;
     }
     const percent =
       totalQuestions > 0 ? Math.round((100 * totalCorrect) / totalQuestions) : 0;
-    return { totalCorrect, totalQuestions, percent };
+    return {
+      totalCorrect,
+      totalQuestions,
+      percent,
+      lessonsPassed,
+      totalLessons: course.lessons.length,
+    };
   }, [course, progress]);
 
   async function downloadPDF() {
@@ -89,6 +97,8 @@ export default function Certificate() {
           totalCorrect: aggregate.totalCorrect,
           totalQuestions: aggregate.totalQuestions,
           percent: aggregate.percent,
+          lessonsPassed: aggregate.lessonsPassed,
+          totalLessons: aggregate.totalLessons,
         },
         courseId
       );
